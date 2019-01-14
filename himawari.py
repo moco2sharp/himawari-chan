@@ -5,6 +5,7 @@ import time
 import RPi.GPIO as GPIO
 from time import sleep
 import spidev
+import datetime
 
 #**** set i2c *****
 
@@ -71,9 +72,7 @@ def readData():
 	temp_raw = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4)
 	hum_raw  = (data[6] << 8)  |  data[7]
 	
-	compensate_T(temp_raw)
-	compensate_P(pres_raw)
-	compensate_H(hum_raw)
+	return (compensate_T(temp_raw),compensate_P(pres_raw),compensate_H(hum_raw))
 
 def compensate_P(adc_P):
 	global  t_fine
@@ -85,7 +84,7 @@ def compensate_P(adc_P):
 	v2 = (v2 / 4.0) + (digP[3] * 65536.0)
 	v1 = (((digP[2] * (((v1 / 4.0) * (v1 / 4.0)) / 8192)) / 8)  + ((digP[1] * v1) / 2.0)) / 262144
 	v1 = ((32768 + v1) * digP[0]) / 32768
-	
+
 	if v1 == 0:
 		return 0
 	pressure = ((1048576 - adc_P) - (v2 / 4096)) * 3125
@@ -95,9 +94,10 @@ def compensate_P(adc_P):
 		pressure = (pressure / v1) * 2
 	v1 = (digP[8] * (((pressure / 8.0) * (pressure / 8.0)) / 8192.0)) / 4096
 	v2 = ((pressure / 4.0) * digP[7]) / 8192.0
-	pressure = pressure + ((v1 + v2 + digP[6]) / 16.0)  
+	pressure = pressure + ((v1 + v2 + digP[6]) / 16.0)
 
 	print "pressure : %7.2f hPa" % (pressure/100)
+	return pressure/100
 
 def compensate_T(adc_T):
 	global t_fine
@@ -105,7 +105,8 @@ def compensate_T(adc_T):
 	v2 = (adc_T / 131072.0 - digT[0] / 8192.0) * (adc_T / 131072.0 - digT[0] / 8192.0) * digT[2]
 	t_fine = v1 + v2
 	temperature = t_fine / 5120.0
-	print "temp : %-6.2f ℃" % (temperature) 
+	print "temp : %-6.2f ℃" % (temperature)
+	return temperature
 
 def compensate_H(adc_H):
 	global t_fine
@@ -119,7 +120,9 @@ def compensate_H(adc_H):
 		var_h = 100.0
 	elif var_h < 0.0:
 		var_h = 0.0
+
 	print "hum : %6.2f ％" % (var_h)
+	return var_h
 
 
 def setup():
@@ -171,10 +174,22 @@ def Read_spi(channel):
 	#print(adc)
 	return data
 
+SPI_MAX = 1023.0
+OFFSET_MOIST = 420.0 # だいたいこれくらい。値を取ってみないとわからない。
+
+def convert_moist(raw):
+	if raw < OFFSET_MOIST:
+		return 100.0
+	else:
+		return ((SPI_MAX - raw)/(SPI_MAX - OFFSET_MOIST))*100.0 
+	
 
 if __name__ == '__main__':
 	try:
-		
+
+		datetime = datetime.datetime.today()
+		datetime_formatted = datetime.strftime("%Y_%m%d_%H:%M:%S")
+		print (datetime_formatted)
 
 		#SPI通信開始
 		spi=spidev.SpiDev()
@@ -183,14 +198,22 @@ if __name__ == '__main__':
 
 		#データ取得前にYL-69に電圧を印可
 		output_fromGPIO(pin,True)
+		sleep(0.5)
 		moisture = Read_spi(0)
-		print(moisture)
 		#YL-69の印加電圧をとめる
 		output_fromGPIO(pin,False)
 		#SPI通信終了
 		spi.close()
 
-		readData()
+		(temp,press,hum) = readData()
+
+		print (moisture)
+		moist = convert_moist(moisture)
+		print "moisture : %f" % (moist)
+		#print "%f,%f,%f"%(temp,press,hum)
+
+		if moist < 15.0  and temp > 10.0:
+			print "Need water !"
 
 	except KeyboardInterrupt:
 		pass
