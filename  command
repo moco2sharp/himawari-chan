@@ -1,0 +1,4 @@
+USB port off:
+sudo hub-ctrl -b 1 -d 2 -P 2 -p 0
+USB port on:
+sudo hub-ctrl -b 1 -d 2 -P 2 -p 1
