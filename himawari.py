@@ -6,6 +6,7 @@ import RPi.GPIO as GPIO
 from time import sleep
 import spidev
 import datetime
+import subprocess
 
 #**** set i2c *****
 
@@ -96,7 +97,7 @@ def compensate_P(adc_P):
 	v2 = ((pressure / 4.0) * digP[7]) / 8192.0
 	pressure = pressure + ((v1 + v2 + digP[6]) / 16.0)
 
-	print "pressure : %7.2f hPa" % (pressure/100)
+	#print "pressure : %7.2f hPa" % (pressure/100)
 	return pressure/100
 
 def compensate_T(adc_T):
@@ -105,7 +106,7 @@ def compensate_T(adc_T):
 	v2 = (adc_T / 131072.0 - digT[0] / 8192.0) * (adc_T / 131072.0 - digT[0] / 8192.0) * digT[2]
 	t_fine = v1 + v2
 	temperature = t_fine / 5120.0
-	print "temp : %-6.2f ℃" % (temperature)
+	#print "temp : %-6.2f ℃" % (temperature)
 	return temperature
 
 def compensate_H(adc_H):
@@ -121,7 +122,7 @@ def compensate_H(adc_H):
 	elif var_h < 0.0:
 		var_h = 0.0
 
-	print "hum : %6.2f ％" % (var_h)
+	#print "hum : %6.2f ％" % (var_h)
 	return var_h
 
 
@@ -186,11 +187,6 @@ def convert_moist(raw):
 
 if __name__ == '__main__':
 	try:
-
-		datetime = datetime.datetime.today()
-		datetime_formatted = datetime.strftime("%Y_%m%d_%H:%M:%S")
-		print (datetime_formatted)
-
 		#SPI通信開始
 		spi=spidev.SpiDev()
 		spi.open(0, 0) # bus0, CE0
@@ -207,15 +203,33 @@ if __name__ == '__main__':
 
 		(temp,press,hum) = readData()
 
-		print (moisture)
+		#print (moisture)
 		moist = convert_moist(moisture)
-		print "moisture : %f" % (moist)
+		print "moisture : %5.1f" % (moist)
 		#print "%f,%f,%f"%(temp,press,hum)
+		
+		datetime = datetime.datetime.today()
+		datetime_formatted = datetime.strftime("%Y%m%d%H%M%S")
+		#print (datetime_formatted)
 
-		if moist < 15.0  and temp > 10.0:
-			print "Need water !"
+		data = "%s, %7.2f, %5.2f, %5.2f, %5.1f\n" % (datetime_formatted,press,temp,hum,moist)
+		print data
+
+		water = "bash /home/pi/N1/pump.sh"
+		if moist < 20.0  and temp > 15.0:
+			print "give water !"
+			subprocess.Popen(water.split())
+
+		# take photo
+		cmd = "python /home/pi/N1/camera/camera.py"
+		subprocess.Popen(cmd.split())
+
+		# add the data to log file
+		file = "/home/pi/N1/logfile/"+ datetime.strftime("%Y%m%d") + ".log"
+		f = open(file,'a')
+		f.write(data)
+		f.close()
+
 
 	except KeyboardInterrupt:
 		pass
-
-
